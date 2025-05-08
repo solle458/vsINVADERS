@@ -14,4 +14,8 @@ vsINVADERS
 
 プロジェクトのリポジトリ => https://github.com/solle458/vsINVADERS
 
+インベーダーのCPUが強い（AI）やつやろうかなと思います<br>
+ステージは迷路っぽいものを自動生成かな〜<br>
+ランキング機能もできたらやる<br>
+
 ps:あとでちゃんと書きます

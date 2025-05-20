@@ -6,53 +6,37 @@ import { Button } from '@/components/ui/button';
 import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Zap } from 'lucide-react';
 
 export const GameControls: React.FC = () => {
-  const { gameState, updatePlayerPosition, addEffect } = useGameStore();
+  const { sessions, movePlayer, addEffect } = useGameStore();
+
+  // 現在のゲームセッションを取得（最初のセッションを使用）
+  const currentSession = Object.values(sessions)[0];
+  if (!currentSession) return null;
+
+  const { state: gameState } = currentSession;
+  const gameId = gameState.gameId;
 
   const handleMove = useCallback((direction: Direction) => {
-    if (!gameState || gameState.gameStatus !== 'playing') return;
+    if (gameState.gameStatus !== 'playing') return;
 
     const currentPlayer = gameState.players[gameState.currentTurn || ''];
     if (!currentPlayer || currentPlayer.type !== 'user') return;
 
-    const { position } = currentPlayer;
-    const newPosition = { ...position };
-
-    switch (direction) {
-      case 'north':
-        newPosition.y = Math.max(0, position.y - 1);
-        break;
-      case 'south':
-        newPosition.y = Math.min(gameState.maze.length - 1, position.y + 1);
-        break;
-      case 'east':
-        newPosition.x = Math.min(gameState.maze[0].length - 1, position.x + 1);
-        break;
-      case 'west':
-        newPosition.x = Math.max(0, position.x - 1);
-        break;
-    }
-
-    // 壁との衝突チェック
-    if (gameState.maze[newPosition.y][newPosition.x] === 1) return;
-
-    updatePlayerPosition(currentPlayer.id, newPosition);
-  }, [gameState, updatePlayerPosition]);
+    movePlayer(gameId, currentPlayer.id, direction);
+  }, [gameState, movePlayer, gameId]);
 
   const handleAttack = useCallback(() => {
-    if (!gameState || gameState.gameStatus !== 'playing') return;
+    if (gameState.gameStatus !== 'playing') return;
 
     const currentPlayer = gameState.players[gameState.currentTurn || ''];
     if (!currentPlayer || currentPlayer.type !== 'user') return;
 
-    addEffect({
+    addEffect(gameId, {
       type: 'attack',
       position: currentPlayer.position,
       direction: 'north', // デフォルトは北向き
       playerId: currentPlayer.id,
     });
-  }, [gameState, addEffect]);
-
-  if (!gameState) return null;
+  }, [gameState, addEffect, gameId]);
 
   return (
     <div className="flex flex-col items-center gap-4 p-4 bg-white rounded-lg shadow-lg">

@@ -6,12 +6,14 @@ import { Trophy, RefreshCw, Home } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export const GameHeader: React.FC = () => {
-  const { gameState, resetGame } = useGameStore();
+  const { sessions, resetGame } = useGameStore();
   const router = useRouter();
 
-  if (!gameState) return null;
+  // 現在のゲームセッションを取得（最初のセッションを使用）
+  const currentSession = Object.values(sessions)[0];
+  if (!currentSession) return null;
 
-  const { gameStatus, winner } = gameState;
+  const { gameStatus, winner } = currentSession.state;
 
   return (
     <div className="flex items-center justify-between p-4 bg-white rounded-lg shadow-lg">
@@ -28,7 +30,11 @@ export const GameHeader: React.FC = () => {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => router.push('/')}
+          onClick={() => {
+            const gameId = currentSession.state.gameId;
+            resetGame(gameId);
+            router.push(`/game/${gameId}`);
+          }}
           className="flex items-center gap-2"
         >
           <RefreshCw className="h-4 w-4" />

@@ -56,13 +56,15 @@ function GameContent({ gameId }: GameContentProps) {
     <div className="p-4">
       <div className="max-w-4xl mx-auto space-y-4">
         <GameHeader />
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2 space-y-4">
+        <div className="flex flex-col lg:flex-row items-center lg:items-start gap-6 w-full">
+          {/* 左: 迷路 */}
+          <div className="flex-1 flex justify-center">
             <GameCanvas />
-            <GameControls />
           </div>
-          <div>
+          {/* 右: プレイヤー情報＋コントローラー */}
+          <div className="w-full lg:w-80 flex flex-col gap-4 items-center">
             <GameStatus />
+            <GameControls />
           </div>
         </div>
       </div>

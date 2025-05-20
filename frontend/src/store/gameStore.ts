@@ -15,7 +15,6 @@ export interface Player {
   id: string;
   type: PlayerType;
   position: Position;
-  health: number;
 }
 
 export interface Effect {
@@ -59,24 +58,22 @@ interface GameStore {
 const createInitialGameState = (gameId: string): GameState => ({
   gameId,
   maze: [
-    [1, 1, 1, 1, 1],
-    [1, 0, 0, 0, 1],
-    [1, 0, 1, 0, 1],
-    [1, 0, 0, 0, 1],
-    [1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1],
+    [1, 0, 0, 0, 0, 0, 1],
+    [1, 0, 1, 1, 1, 0, 1],
+    [1, 0, 0, 0, 0, 0, 1],
+    [1, 1, 1, 1, 1, 1, 1],
   ],
   players: {
     player1: {
       id: 'player1',
       type: 'user',
       position: { x: 1, y: 1 },
-      health: 100,
     },
     player2: {
       id: 'player2',
       type: 'ai',
       position: { x: 3, y: 3 },
-      health: 100,
     },
   },
   effects: [],

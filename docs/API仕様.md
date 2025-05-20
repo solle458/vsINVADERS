@@ -310,7 +310,62 @@ GET /games/{gameId}/score
 }
 ```
 
-## 1. ゲーム管理API
+## 型定義
+
+### 基本型
+```typescript
+type GameStatus = 'waiting' | 'playing' | 'finished';
+type PlayerType = 'user' | 'ai';
+type Direction = 'north' | 'south' | 'east' | 'west';
+
+interface Position {
+  x: number;
+  y: number;
+}
+
+interface Player {
+  id: string;
+  type: PlayerType;
+  position: Position;
+}
+
+interface Effect {
+  type: 'attack';
+  position: Position;
+  direction: Direction;
+  playerId: string;
+}
+
+interface GameState {
+  gameId: string;
+  maze: number[][];  // 0: 通路, 1: 壁
+  players: Record<string, Player>;
+  effects: Effect[];
+  currentTurn: string | null;
+  gameStatus: GameStatus;
+  winner: string | null;
+}
+
+interface GameSession {
+  state: GameState;
+  lastUpdated: number;
+}
+
+interface GameResponse {
+  gameId: string;
+  state: GameState;
+  lastUpdated: number;
+}
+
+interface ActionRequest {
+  gameId: string;
+  playerId: string;
+  action: 'move' | 'attack';
+  direction?: Direction;  // moveアクションの場合のみ必須
+}
+```
+
+## ゲーム管理API
 
 ### 1.1 新しいゲームを開始
 
@@ -321,10 +376,10 @@ POST /game/start
 **リクエストボディ**:
 ```json
 {
-  "gameMode": "ai_vs_human" | "ai_vs_ai" | "human_vs_human",
+  "gameMode": "ai_vs_user" | "ai_vs_ai" | "user_vs_user",
   "mazeSize": {
-    "width": 15,
-    "height": 15
+    "width": number,
+    "height": number
   }
 }
 ```
@@ -333,32 +388,27 @@ POST /game/start
 ```json
 {
   "gameId": "uuid",
-  "maze": {
-    "width": 15,
-    "height": 15,
-    "cells": [[0, 1, 0, ...], ...], // 0: 通路, 1: 壁
-    "startPositions": {
-      "player1": {"x": 1, "y": 1},
-      "player2": {"x": 13, "y": 13}
-    }
-  },
-  "players": {
-    "player1": {
-      "id": "player1",
-      "type": "ai" | "human",
-      "position": {"x": 1, "y": 1},
-      "health": 100
+  "state": {
+    "gameId": "uuid",
+    "maze": number[][],
+    "players": {
+      "player1": {
+        "id": "player1",
+        "type": "ai" | "user",
+        "position": {"x": number, "y": number}
+      },
+      "player2": {
+        "id": "player2",
+        "type": "ai" | "user",
+        "position": {"x": number, "y": number}
+      }
     },
-    "player2": {
-      "id": "player2", 
-      "type": "ai" | "human",
-      "position": {"x": 13, "y": 13},
-      "health": 100
-    }
+    "effects": [],
+    "currentTurn": "player1",
+    "gameStatus": "playing",
+    "winner": null
   },
-  "currentTurn": "player1",
-  "turnCount": 0,
-  "gameStatus": "playing"
+  "lastUpdated": number
 }
 ```
 
@@ -372,80 +422,40 @@ GET /game/{gameId}/state
 ```json
 {
   "gameId": "uuid",
-  "maze": { /* 迷路情報 */ },
-  "players": { /* プレイヤー情報 */ },
-  "currentTurn": "player1",
-  "turnCount": 5,
-  "gameStatus": "playing" | "finished",
-  "winner": null | "player1" | "player2",
-  "lastAction": {
-    "playerId": "player1",
-    "action": "move",
-    "direction": "north",
-    "result": "success"
-  }
-}
-```
-
-## 2. プレイヤー操作API
-
-### 2.1 移動アクション
-
-```http
-POST /game/{gameId}/action/move
-```
-
-**リクエストボディ**:
-```json
-{
-  "playerId": "player1",
-  "direction": "north" | "south" | "east" | "west"
-}
-```
-
-**レスポンス**:
-```json
-{
-  "success": true,
-  "result": "moved" | "blocked" | "invalid_turn",
-  "newPosition": {"x": 2, "y": 1},
-  "gameState": {
-    "currentTurn": "player2",
-    "turnCount": 6,
-    "gameStatus": "playing"
-  }
-}
-```
-
-### 2.2 攻撃アクション
-
-```http
-POST /game/{gameId}/action/attack
-```
-
-**リクエストボディ**:
-```json
-{
-  "playerId": "player1",
-  "direction": "north" | "south" | "east" | "west"
-}
-```
-
-**レスポンス**:
-```json
-{
-  "success": true,
-  "result": "wall_destroyed" | "hit_player" | "miss" | "invalid_turn",
-  "target": {
-    "type": "wall" | "player",
-    "position": {"x": 2, "y": 0}
+  "state": {
+    "gameId": "uuid",
+    "maze": number[][],
+    "players": Record<string, Player>,
+    "effects": Effect[],
+    "currentTurn": string | null,
+    "gameStatus": "waiting" | "playing" | "finished",
+    "winner": string | null
   },
-  "gameState": {
-    "currentTurn": "player2",
-    "turnCount": 7,
-    "gameStatus": "playing" | "finished",
-    "winner": null | "player1"
-  }
+  "lastUpdated": number
+}
+```
+
+### 2.1 アクション実行
+
+```http
+POST /game/{gameId}/action
+```
+
+**リクエストボディ**:
+```json
+{
+  "playerId": string,
+  "action": "move" | "attack",
+  "direction": Direction  // moveアクションの場合のみ必須
+}
+```
+
+**レスポンス**:
+```json
+{
+  "gameId": "uuid",
+  "state": GameState,
+  "lastUpdated": number
 }
 ```
 

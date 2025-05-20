@@ -4,9 +4,58 @@ import { Game, GameMode, GameSettings, GameStatus } from '../models/game';
 import { Player, PlayerType, ActionType, ActionResult } from '../models/player';
 import { Direction } from '../models/maze';
 import { Errors } from '../utils/errors';
+import { aiController } from './aiController';
+import { setGameControllerRef } from './aiController';
 
 // インメモリゲーム管理（将来的にはDBに置き換える）
 const activeGames = new Map<string, Game>();
+
+// AIスクリプトの仮実装（実際の実装ではDBから取得）
+// 本来はaiController.tsと連携するべきだが、簡易実装として直接定義
+const defaultAiScript = {
+  id: 'default-ai-script',
+  name: 'Default AI',
+  ownerId: 'system',
+  filename: 'default_ai.py',
+  uploadedAt: new Date(),
+  status: 'active' as const,
+  lastRunAt: null,
+};
+
+/**
+ * AIコンテナを起動する関数
+ */
+const startAiContainer = async (aiId: string, gameId: string, playerId: string) => {
+  try {
+    // Express用のリクエスト・レスポンスオブジェクトをモックで作成
+    const mockReq = {
+      body: { aiId, gameId, playerId },
+      user: { id: 'system' }
+    } as Request;
+    
+    const mockRes = {
+      status: function(code: number) {
+        return {
+          json: function(data: any) {
+            console.log(`AI container started: ${JSON.stringify(data)}`);
+            return data;
+          }
+        };
+      }
+    } as Response;
+    
+    const mockNext = ((error: any) => {
+      if (error) console.error(`Error starting AI container: ${error.message}`);
+    }) as NextFunction;
+    
+    // AIコントローラのstartContainerメソッドを呼び出し
+    await aiController.startContainer(mockReq, mockRes, mockNext);
+    return true;
+  } catch (error) {
+    console.error(`Failed to start AI container: ${error}`);
+    return false;
+  }
+};
 
 /**
  * ゲームコントローラ
@@ -41,32 +90,57 @@ export const gameController = {
       // 新しいゲームを作成
       const game = new Game(settings);
       
-      // テスト用のプレイヤーを追加
+      // プレイヤー1を追加（モードに応じてタイプを決定）
+      const player1Type = gameMode === GameMode.AI_VS_AI ? PlayerType.AI : PlayerType.USER;
       const player1 = new Player({
         id: uuidv4(),
-        name: 'Player 1',
-        type: PlayerType.USER,
+        name: player1Type === PlayerType.AI ? 'AI Player 1' : 'Player 1',
+        type: player1Type,
         position: { x: 1, y: 1 },
       });
       
       game.addPlayer(player1);
       
+      // プレイヤー1がAIの場合、AIコンテナを起動
+      if (player1Type === PlayerType.AI) {
+        await startAiContainer(defaultAiScript.id, game.id, player1.id);
+      }
+      
+      // AI vs AIモードまたはAI vs USERモードの場合、AIプレイヤー2を自動的に追加
+      if (gameMode === GameMode.AI_VS_AI || gameMode === GameMode.AI_VS_USER) {
+        const player2 = new Player({
+          id: uuidv4(),
+          name: 'AI Player 2',
+          type: PlayerType.AI,
+          position: { x: settings.mazeSize.width - 2, y: settings.mazeSize.height - 2 },
+        });
+        
+        game.addPlayer(player2);
+        
+        // AIプレイヤー2のAIコンテナを起動
+        await startAiContainer(defaultAiScript.id, game.id, player2.id);
+      }
+      
       // アクティブゲームに追加
       activeGames.set(game.id, game);
       
       // API仕様に合わせたレスポンス形式
+      const players: Record<string, any> = {};
+      game.players.forEach((player, index) => {
+        const playerKey = `player${index + 1}`;
+        players[playerKey] = {
+          id: player.id,
+          type: player.type,
+          position: player.position
+        };
+      });
+      
       res.status(200).json({
         gameId: game.id,
         state: {
           gameId: game.id,
           maze: game.maze.getState().grid,
-          players: {
-            player1: {
-              id: player1.id,
-              type: player1.type,
-              position: player1.position
-            }
-          },
+          players: players,
           effects: [],
           currentTurn: "player1",
           gameStatus: game.status,
@@ -218,6 +292,69 @@ export const gameController = {
   },
   
   /**
+   * AIコントローラから直接呼び出されるゲームアクション処理
+   * モックリクエスト/レスポンスを作成せずに直接ゲームアクションを処理
+   */
+  processGameAction: async (gameId: string, playerId: string, action: ActionType, direction: Direction) => {
+    // ゲームを取得
+    const game = activeGames.get(gameId);
+    if (!game) {
+      throw Errors.notFound('Game not found');
+    }
+    
+    // アクションを実行
+    let result;
+    try {
+      result = game.processAction(playerId, action, direction);
+    } catch (error: any) {
+      if (error.message === 'Not your turn') {
+        throw Errors.game.notYourTurn();
+      } else if (error.message === 'Game is not in playing state') {
+        throw Errors.game.gameAlreadyFinished();
+      } else {
+        throw error;
+      }
+    }
+    
+    // ゲーム状態を返す
+    const gameState = game.getState();
+    const players: Record<string, any> = {};
+    
+    gameState.players.forEach((player, index) => {
+      const playerKey = `player${index + 1}`;
+      players[playerKey] = {
+        id: player.id,
+        type: player.type,
+        position: player.position
+      };
+    });
+    
+    // 現在のターンのプレイヤー番号を取得
+    const currentPlayerIndex = (game.currentTurn - 1) % 2;
+    const currentPlayerKey = `player${currentPlayerIndex + 1}`;
+    
+    // 勝者が存在する場合、そのプレイヤー番号を取得
+    let winnerKey = null;
+    if (game.winnerIndex !== null) {
+      winnerKey = `player${game.winnerIndex + 1}`;
+    }
+    
+    return {
+      gameId,
+      state: {
+        gameId: gameId,
+        maze: gameState.maze.grid,
+        players: players,
+        effects: [],
+        currentTurn: currentPlayerKey,
+        gameStatus: gameState.status,
+        winner: winnerKey
+      },
+      lastUpdated: new Date().getTime()
+    };
+  },
+  
+  /**
    * ゲーム履歴を取得
    */
   getGameHistory: async (req: Request, res: Response, next: NextFunction) => {
@@ -296,6 +433,11 @@ export const gameController = {
       
       game.addPlayer(player);
       
+      // AIプレイヤーの場合、AIコンテナを起動
+      if (type === PlayerType.AI) {
+        await startAiContainer(defaultAiScript.id, gameId, player.id);
+      }
+      
       // API仕様に合わせたレスポンス形式
       res.status(200).json({
         success: true,
@@ -307,4 +449,10 @@ export const gameController = {
       next(error);
     }
   },
-}; 
+};
+
+// 循環参照を避けるため、モジュールのロード後に参照を設定
+setTimeout(() => {
+  setGameControllerRef(gameController);
+  console.log('Game controller reference set to AI controller');
+}, 0); 

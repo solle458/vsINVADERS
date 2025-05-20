@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { Errors } from '../utils/errors';
+import { ActionType, PlayerType } from '../models/player';
+import { Direction } from '../models/maze';
 
 // 仮のAIコンテナ情報（実際のプロジェクトではDBに保存）
 const aiContainers = new Map<string, {
@@ -25,6 +27,14 @@ const aiScripts = new Map<string, {
   status: 'active' | 'inactive' | 'error';
   lastRunAt: Date | null;
 }>();
+
+// ゲームコントローラへの参照（循環参照を避けるため、後で設定）
+let gameControllerRef: any = null;
+
+// ゲームコントローラの参照を設定する関数
+export const setGameControllerRef = (controller: any) => {
+  gameControllerRef = controller;
+};
 
 /**
  * AIコントローラ
@@ -216,4 +226,77 @@ export const aiController = {
       next(error);
     }
   },
+  
+  /**
+   * AIからのアクション実行
+   * AIコンテナから呼び出される
+   */
+  executeAiAction: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { containerId, action, direction } = req.body;
+      
+      // バリデーション
+      if (!containerId || !action || !direction) {
+        throw Errors.badRequest('Missing required fields');
+      }
+      
+      // アクションタイプのバリデーション
+      if (!Object.values(ActionType).includes(action)) {
+        throw Errors.game.invalidAction();
+      }
+      
+      // 方向のバリデーション
+      if (!Object.values(Direction).includes(direction)) {
+        throw Errors.badRequest('Invalid direction');
+      }
+      
+      // コンテナ情報を取得
+      const containerInfo = aiContainers.get(containerId);
+      if (!containerInfo) {
+        throw Errors.notFound('Container not found');
+      }
+      
+      // コンテナが実行中かチェック
+      if (containerInfo.status !== 'running') {
+        throw Errors.conflict('Container is not running');
+      }
+      
+      // コンテナのハートビートを更新
+      containerInfo.lastHeartbeat = new Date();
+      
+      // ゲームコントローラの参照が設定されているか確認
+      if (!gameControllerRef) {
+        throw Errors.internal('Game controller not initialized');
+      }
+      
+      // 直接ゲームアクションを実行
+      try {
+        const result = await gameControllerRef.processGameAction(
+          containerInfo.gameId,
+          containerInfo.playerId,
+          action,
+          direction
+        );
+        
+        res.status(200).json(result);
+      } catch (error) {
+        throw error;
+      }
+    } catch (error) {
+      next(error);
+    }
+  },
 }; 
+
+// デフォルトのAIスクリプトを追加（開発用）
+const defaultScript = {
+  id: 'default-ai-script',
+  name: 'Default AI',
+  ownerId: 'system',
+  filename: 'default_ai.py',
+  uploadedAt: new Date(),
+  status: 'active' as const,
+  lastRunAt: null,
+};
+
+aiScripts.set(defaultScript.id, defaultScript); 

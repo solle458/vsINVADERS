@@ -8,7 +8,7 @@ export const gameRoutes = express.Router();
 gameRoutes.post('/start', authenticateJWT, gameController.startGame);
 
 // ゲーム状態取得エンドポイント
-gameRoutes.get('/:gameId', authenticateJWT, gameController.getGame);
+gameRoutes.get('/:gameId/state', authenticateJWT, gameController.getGame);
 
 // ゲームアクション（移動/攻撃）エンドポイント
 gameRoutes.post('/:gameId/action', authenticateJWT, gameController.executeAction);

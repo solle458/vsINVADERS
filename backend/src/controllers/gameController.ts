@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { Game, GameMode, GameSettings } from '../models/game';
+import { Game, GameMode, GameSettings, GameStatus } from '../models/game';
 import { Player, PlayerType, ActionType, ActionResult } from '../models/player';
 import { Direction } from '../models/maze';
 import { Errors } from '../utils/errors';
@@ -17,10 +17,10 @@ export const gameController = {
    */
   startGame: async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { mode, mazeSize } = req.body;
+      const { gameMode, mazeSize } = req.body;
       
       // モードのバリデーション
-      if (!Object.values(GameMode).includes(mode)) {
+      if (!Object.values(GameMode).includes(gameMode)) {
         throw Errors.game.invalidGameMode();
       }
       
@@ -31,7 +31,7 @@ export const gameController = {
       
       // ゲーム設定
       const settings: GameSettings = {
-        mode,
+        mode: gameMode,
         mazeSize: {
           width: Math.min(Math.max(mazeSize.width, 5), 30),
           height: Math.min(Math.max(mazeSize.height, 5), 30),
@@ -54,11 +54,25 @@ export const gameController = {
       // アクティブゲームに追加
       activeGames.set(game.id, game);
       
+      // API仕様に合わせたレスポンス形式
       res.status(200).json({
         gameId: game.id,
-        status: game.status,
-        maze: game.maze.getState(),
-        players: game.players.map(p => p.getState()),
+        state: {
+          gameId: game.id,
+          maze: game.maze.getState().grid,
+          players: {
+            player1: {
+              id: player1.id,
+              type: player1.type,
+              position: player1.position
+            }
+          },
+          effects: [],
+          currentTurn: "player1",
+          gameStatus: game.status,
+          winner: null
+        },
+        lastUpdated: new Date().getTime()
       });
     } catch (error) {
       next(error);
@@ -78,7 +92,42 @@ export const gameController = {
         throw Errors.notFound('Game not found');
       }
       
-      res.status(200).json(game.getState());
+      // API仕様に合わせたレスポンス形式
+      const gameState = game.getState();
+      const players: Record<string, any> = {};
+      
+      gameState.players.forEach((player, index) => {
+        const playerKey = `player${index + 1}`;
+        players[playerKey] = {
+          id: player.id,
+          type: player.type,
+          position: player.position
+        };
+      });
+      
+      // 現在のターンのプレイヤー番号を取得
+      const currentPlayerIndex = (game.currentTurn - 1) % 2;
+      const currentPlayerKey = `player${currentPlayerIndex + 1}`;
+      
+      // 勝者が存在する場合、そのプレイヤー番号を取得
+      let winnerKey = null;
+      if (game.winnerIndex !== null) {
+        winnerKey = `player${game.winnerIndex + 1}`;
+      }
+      
+      res.status(200).json({
+        gameId,
+        state: {
+          gameId: gameId,
+          maze: gameState.maze.grid,
+          players: players,
+          effects: [],
+          currentTurn: currentPlayerKey,
+          gameStatus: gameState.status,
+          winner: winnerKey
+        },
+        lastUpdated: new Date().getTime()
+      });
     } catch (error) {
       next(error);
     }
@@ -127,11 +176,41 @@ export const gameController = {
         }
       }
       
-      // 結果を返す
+      // API仕様に合わせたレスポンス形式
+      const gameState = game.getState();
+      const players: Record<string, any> = {};
+      
+      gameState.players.forEach((player, index) => {
+        const playerKey = `player${index + 1}`;
+        players[playerKey] = {
+          id: player.id,
+          type: player.type,
+          position: player.position
+        };
+      });
+      
+      // 現在のターンのプレイヤー番号を取得
+      const currentPlayerIndex = (game.currentTurn - 1) % 2;
+      const currentPlayerKey = `player${currentPlayerIndex + 1}`;
+      
+      // 勝者が存在する場合、そのプレイヤー番号を取得
+      let winnerKey = null;
+      if (game.winnerIndex !== null) {
+        winnerKey = `player${game.winnerIndex + 1}`;
+      }
+      
       res.status(200).json({
         gameId,
-        result,
-        newState: game.getState(),
+        state: {
+          gameId: gameId,
+          maze: gameState.maze.grid,
+          players: players,
+          effects: [],
+          currentTurn: currentPlayerKey,
+          gameStatus: gameState.status,
+          winner: winnerKey
+        },
+        lastUpdated: new Date().getTime()
       });
     } catch (error) {
       next(error);
@@ -145,16 +224,35 @@ export const gameController = {
     try {
       // 実際の実装ではDBから履歴を取得
       // 現在はアクティブなゲームのリストを返す
-      const games = Array.from(activeGames.values()).map(game => ({
-        id: game.id,
-        mode: game.mode,
-        status: game.status,
-        createdAt: game.createdAt,
-        lastUpdatedAt: game.lastUpdatedAt,
-        players: game.players.map(p => p.getState()),
-      }));
+      const games = Array.from(activeGames.values()).map(game => {
+        const playerTypes: Record<string, { type: string }> = {};
+        
+        game.players.forEach((player, index) => {
+          playerTypes[`player${index + 1}`] = {
+            type: player.type
+          };
+        });
+
+        let winner = null;
+        if (game.winnerIndex !== null) {
+          winner = `player${game.winnerIndex + 1}`;
+        }
+        
+        return {
+          gameId: game.id,
+          startedAt: game.createdAt.toISOString(),
+          finishedAt: game.status === GameStatus.FINISHED ? game.lastUpdatedAt.toISOString() : null,
+          winner: winner,
+          players: playerTypes,
+          totalTurns: game.currentTurn
+        };
+      });
       
-      res.status(200).json({ games });
+      res.status(200).json({
+        games,
+        total: games.length,
+        hasMore: false
+      });
     } catch (error) {
       next(error);
     }
@@ -198,10 +296,12 @@ export const gameController = {
       
       game.addPlayer(player);
       
+      // API仕様に合わせたレスポンス形式
       res.status(200).json({
+        success: true,
         gameId: game.id,
         playerId: player.id,
-        status: game.status,
+        status: game.status
       });
     } catch (error) {
       next(error);

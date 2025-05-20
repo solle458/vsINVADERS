@@ -10,6 +10,31 @@
 - [SDK設計.md](./SDK設計.md): AI開発用SDKの設計
 - [ディレクトリ構成.md](./ディレクトリ構成.md): プロジェクトのディレクトリ構造
 
+## 実装状況（2024年5月時点）
+
+このAPI仕様書は完全な機能セットを記述していますが、現在のバックエンド実装は以下の機能のみをサポートしています：
+
+1. 基本的なゲーム管理機能
+   - ゲーム開始 (`POST /game/start`)
+   - ゲーム状態取得 (`GET /game/{gameId}/state`)
+   - ゲームアクション実行 (`POST /game/{gameId}/action`)
+   - プレイヤー追加 (`POST /game/{gameId}/player`)
+   - ゲーム履歴取得 (`GET /game/history`)
+   
+2. 認証関連
+   - ログイン (`POST /auth/login`)
+   - サインアップ (`POST /auth/signup`)
+
+3. AI関連の基本機能
+   - AIコンテナ起動/状態確認/停止
+   - AIスクリプトのアップロード/取得
+
+現在、以下の機能は実装中または予定段階です：
+- AIプレイヤーの自動追加と自動行動機能
+- リプレイ機能
+- スコアリングシステム
+- リアルタイム通信（WebSocket）
+
 ## 実装上の注意点
 
 1. バックエンド実装
@@ -134,6 +159,11 @@ POST /auth/login
 
 1. `ai_vs_user`: AI vs 人間プレイヤー
 2. `ai_vs_ai`: AI vs AI
+
+> **注意**: 現在の実装では、ゲームモード選択時にAIプレイヤーは自動的に追加されません。
+> ゲームモードに関わらず、`POST /game/{gameId}/player` エンドポイントを使用して
+> 明示的に2人目のプレイヤーを追加する必要があります。AIは現在自動行動しないため、
+> AIプレイヤーに対しても手動でアクションを実行する必要があります。
 
 ## AI実行環境API
 
@@ -456,6 +486,30 @@ POST /game/{gameId}/action
   "gameId": "uuid",
   "state": GameState,
   "lastUpdated": number
+}
+```
+
+### 2.2 プレイヤー追加
+
+```http
+POST /game/{gameId}/player
+```
+
+**リクエストボディ**:
+```json
+{
+  "name": "Player Name",
+  "type": "ai" | "user"
+}
+```
+
+**レスポンス**:
+```json
+{
+  "success": true,
+  "gameId": "uuid",
+  "playerId": "uuid",
+  "status": "waiting" | "playing"
 }
 ```
 

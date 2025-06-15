@@ -1,55 +1,67 @@
 version: '3.8'
 
 services:
+  # Go Backend Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - ENV=development
+      - DB_PATH=/app/data/game.db
+    volumes:
+      - ./backend:/app
+      - ./data:/app/data
+    depends_on:
+      - ai-runner
+    networks:
+      - vsmaze-network
+    restart: unless-stopped
+
+  # Next.js Frontend Service  
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
       - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8080
     volumes:
       - ./frontend:/app
       - /app/node_modules
-    environment:
-      - NODE_ENV=development
     depends_on:
       - backend
+    networks:
+      - vsmaze-network
+    restart: unless-stopped
 
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    ports:
-      - "3001:3001"
-    volumes:
-      - ./backend:/app
-      - /app/node_modules
-    environment:
-      - NODE_ENV=development
-      - DATABASE_URL=${DATABASE_URL}
-    depends_on:
-      - db
-
-  db:
-    image: planetscale/pscale-proxy:latest
-    ports:
-      - "3306:3306"
-    environment:
-      - PSCALE_DATABASE_URL=${DATABASE_URL}
-    command: pscale-proxy connect ${DATABASE_NAME} --port 3306
-
-  ai_runner:
+  # AI Runner Service (Python + Docker-in-Docker)
+  ai-runner:
     build:
       context: ./ai-runner
       dockerfile: Dockerfile
-    volumes:
-      - ./ai-runner/sample_ai:/app/ai_scripts
     environment:
-      - API_URL=http://backend:3001
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '1'
-    depends_on:
-      - backend 
+      - AI_TIMEOUT=60
+      - AI_MEMORY_LIMIT=256m
+      - AI_CPU_LIMIT=0.5
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./ai-runner:/app
+      - ./data/ai-uploads:/app/uploads
+    networks:
+      - vsmaze-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  vsmaze-network:
+    driver: bridge
+
+volumes:
+  ai-uploads:
+  game-data: 

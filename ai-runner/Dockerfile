@@ -1,31 +1,31 @@
 FROM python:3.11-slim
 
-WORKDIR /app
-
-# Install system dependencies
+# 必要なパッケージをインストール
 RUN apt-get update && apt-get install -y \
-    build-essential \
+    docker.io \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# 作業ディレクトリを設定
+WORKDIR /app
+
+# Python依存関係をコピー
 COPY requirements.txt .
+
+# Python依存関係をインストール
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy AI SDK and game environment
-COPY ai_sdk /app/ai_sdk
-COPY game_env /app/game_env
+# ソースコードをコピー
+COPY . .
 
-# Set environment variables
-ENV PYTHONPATH=/app
-ENV PYTHONUNBUFFERED=1
+# AI実行用のセキュアDockerfileテンプレートを作成
+RUN mkdir -p /app/templates
+COPY ai-execution-template.dockerfile /app/templates/
 
-# Set resource limits
-ENV MAX_MEMORY=512M
-ENV MAX_CPU_TIME=30
+# アップロードディレクトリを作成
+RUN mkdir -p /app/uploads
 
-# Create a non-root user
-RUN useradd -m -u 1000 ai_user
-USER ai_user
+# ポートを公開
+EXPOSE 5000
 
-# Set the entrypoint
-ENTRYPOINT ["python", "-m", "ai_sdk.runner"] 
+# AI実行サービスを起動
+CMD ["python", "ai_executor.py"] 

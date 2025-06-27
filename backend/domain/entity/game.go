@@ -81,9 +81,12 @@ func NewGame(player1Type PlayerType, player1ID *string, player2Type PlayerType, 
 		board.Cells[i] = make([]int, 15)
 	}
 
-	// Set initial positions (player1 at bottom-left, player2 at top-right)
-	player1Pos := Position{X: 1, Y: 13}
-	player2Pos := Position{X: 13, Y: 1}
+	// Initialize INVADER-style game board with walls
+	initializeInvaderBoard(&board)
+
+	// Set initial positions (player1 at bottom area, player2 at top area)
+	player1Pos := Position{X: 7, Y: 12} // Bottom center
+	player2Pos := Position{X: 7, Y: 2}  // Top center
 
 	// Place players on board
 	board.Cells[player1Pos.Y][player1Pos.X] = 2 // player1
@@ -108,6 +111,46 @@ func NewGame(player1Type PlayerType, player1ID *string, player2Type PlayerType, 
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
+}
+
+// initializeInvaderBoard sets up INVADER-style board with walls
+func initializeInvaderBoard(board *GameBoard) {
+	// Create border walls
+	for i := 0; i < board.Size; i++ {
+		board.Cells[0][i] = 1            // Top border
+		board.Cells[board.Size-1][i] = 1 // Bottom border
+		board.Cells[i][0] = 1            // Left border
+		board.Cells[i][board.Size-1] = 1 // Right border
+	}
+
+	// Create strategic walls in the middle area
+	// Central barrier
+	for i := 5; i <= 9; i++ {
+		board.Cells[7][i] = 1 // Horizontal wall in center
+	}
+
+	// Corner obstacles
+	board.Cells[3][3] = 1
+	board.Cells[3][4] = 1
+	board.Cells[4][3] = 1
+
+	board.Cells[3][10] = 1
+	board.Cells[3][11] = 1
+	board.Cells[4][11] = 1
+
+	board.Cells[10][3] = 1
+	board.Cells[10][4] = 1
+	board.Cells[11][3] = 1
+
+	board.Cells[10][10] = 1
+	board.Cells[10][11] = 1
+	board.Cells[11][11] = 1
+
+	// Create some cover walls
+	board.Cells[5][2] = 1
+	board.Cells[5][12] = 1
+	board.Cells[9][2] = 1
+	board.Cells[9][12] = 1
 }
 
 // StartGame starts the game
@@ -146,4 +189,36 @@ func (g *Game) ToJSON() (string, error) {
 // FromJSON loads game state from JSON string
 func (g *Game) FromJSON(jsonStr string) error {
 	return json.Unmarshal([]byte(jsonStr), &g.GameState)
+}
+
+// DestroyWall destroys a wall at the specified position
+func (g *Game) DestroyWall(pos Position) bool {
+	if pos.X < 0 || pos.X >= g.GameState.Board.Size || pos.Y < 0 || pos.Y >= g.GameState.Board.Size {
+		return false
+	}
+
+	// Only destroy walls (cell value 1), not players or empty cells
+	if g.GameState.Board.Cells[pos.Y][pos.X] == 1 {
+		g.GameState.Board.Cells[pos.Y][pos.X] = 0
+		g.UpdatedAt = time.Now()
+		return true
+	}
+
+	return false
+}
+
+// IsValidPosition checks if a position is within bounds and not a wall
+func (g *Game) IsValidPosition(pos Position) bool {
+	if pos.X < 0 || pos.X >= g.GameState.Board.Size || pos.Y < 0 || pos.Y >= g.GameState.Board.Size {
+		return false
+	}
+	return g.GameState.Board.Cells[pos.Y][pos.X] == 0
+}
+
+// GetCellType returns the type of cell at the given position
+func (g *Game) GetCellType(pos Position) int {
+	if pos.X < 0 || pos.X >= g.GameState.Board.Size || pos.Y < 0 || pos.Y >= g.GameState.Board.Size {
+		return -1 // Out of bounds
+	}
+	return g.GameState.Board.Cells[pos.Y][pos.X]
 }

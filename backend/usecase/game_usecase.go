@@ -16,6 +16,7 @@ type GameUsecase struct {
 	gameRepo     repository.GameRepository
 	gameMoveRepo repository.GameMoveRepository
 	gameService  *service.GameService
+	aiService    *service.AIService
 }
 
 // NewGameUsecase creates a new game usecase instance
@@ -23,11 +24,13 @@ func NewGameUsecase(
 	gameRepo repository.GameRepository,
 	gameMoveRepo repository.GameMoveRepository,
 	gameService *service.GameService,
+	aiService *service.AIService,
 ) *GameUsecase {
 	return &GameUsecase{
 		gameRepo:     gameRepo,
 		gameMoveRepo: gameMoveRepo,
 		gameService:  gameService,
+		aiService:    aiService,
 	}
 }
 
@@ -184,4 +187,69 @@ func (uc *GameUsecase) DeleteGame(ctx context.Context, gameID int64) error {
 // GenerateGameID generates a unique game ID
 func (uc *GameUsecase) GenerateGameID() string {
 	return uuid.New().String()
+}
+
+// ProcessAITurn processes a COM AI turn
+func (uc *GameUsecase) ProcessAITurn(ctx context.Context, gameID int64) (*entity.Game, error) {
+	// Get game
+	game, err := uc.gameRepo.GetByID(ctx, gameID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get game: %w", err)
+	}
+
+	// Check if game is in playing status
+	if game.Status != entity.GameStatusPlaying {
+		return nil, fmt.Errorf("game is not in playing status")
+	}
+
+	// Determine current player and check if it's a COM player
+	var playerType entity.PlayerType
+	var playerID *string
+	var playerName string
+
+	if game.GameState.TurnPlayer == "player1" {
+		playerType = game.Player1Type
+		playerID = game.Player1ID
+		playerName = "player1"
+	} else {
+		playerType = game.Player2Type
+		playerID = game.Player2ID
+		playerName = "player2"
+	}
+
+	// Only process if current player is COM
+	if playerType != entity.PlayerTypeCOM {
+		return nil, fmt.Errorf("current player is not COM")
+	}
+
+	if playerID == nil {
+		return nil, fmt.Errorf("COM player ID is nil")
+	}
+
+	// Get AI move
+	action, err := uc.aiService.GetAIMove(game, *playerID, playerName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get AI move: %w", err)
+	}
+
+	// Process the AI move
+	return uc.MakeMove(ctx, gameID, playerName, action)
+}
+
+// CheckAndProcessAITurn checks if current player is AI and processes the turn automatically
+func (uc *GameUsecase) CheckAndProcessAITurn(ctx context.Context, game *entity.Game) (*entity.Game, error) {
+	// Check if current player is COM
+	var playerType entity.PlayerType
+	if game.GameState.TurnPlayer == "player1" {
+		playerType = game.Player1Type
+	} else {
+		playerType = game.Player2Type
+	}
+
+	// If current player is COM, process AI turn automatically
+	if playerType == entity.PlayerTypeCOM && game.Status == entity.GameStatusPlaying {
+		return uc.ProcessAITurn(ctx, game.ID)
+	}
+
+	return game, nil
 }

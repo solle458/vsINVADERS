@@ -163,6 +163,13 @@ func (h *GameHandler) MakeMove(c *gin.Context) {
 		return
 	}
 
+	// After human move, check if next player is COM AI and process automatically
+	game, err = h.gameUsecase.CheckAndProcessAITurn(c.Request.Context(), game)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "AI turn failed: " + err.Error()})
+		return
+	}
+
 	response := h.gameToResponse(game)
 	c.JSON(http.StatusOK, response)
 }

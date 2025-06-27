@@ -161,8 +161,11 @@ func (s *GameService) processAttack(game *entity.Game, action entity.Action, pla
 		targetPos = game.GameState.Player1Position
 	}
 
-	// Check if target is in attack path
+	// Process attack path - check for walls and opponents
 	for _, pos := range attackPath {
+		cellType := game.GetCellType(pos)
+
+		// Check if hit opponent
 		if pos.X == targetPos.X && pos.Y == targetPos.Y {
 			// Hit! End the game
 			var winner entity.Winner
@@ -172,6 +175,13 @@ func (s *GameService) processAttack(game *entity.Game, action entity.Action, pla
 				winner = entity.WinnerPlayer2
 			}
 			game.FinishGame(winner)
+			return nil
+		}
+
+		// Check if hit wall
+		if cellType == 1 {
+			// Destroy the wall and stop attack
+			game.DestroyWall(pos)
 			return nil
 		}
 	}

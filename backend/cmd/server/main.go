@@ -2,6 +2,10 @@ package main
 
 import (
 	"log"
+	"os"
+	"path/filepath"
+	"vsmaze-backend/domain/service"
+	"vsmaze-backend/infrastructure/database"
 	"vsmaze-backend/interfaces/handler"
 	"vsmaze-backend/usecase"
 
@@ -9,18 +13,46 @@ import (
 )
 
 func main() {
+	// Database configuration
+	dataDir := filepath.Join("..", "data")
+	dbPath := filepath.Join(dataDir, "game.db")
+
+	// Initialize database connection
+	db, err := database.NewDB(dbPath)
+	if err != nil {
+		log.Fatal("Failed to connect to database:", err)
+	}
+	defer db.Close()
+
+	// Run database migrations
+	if err := db.Migrate(); err != nil {
+		log.Fatal("Failed to run database migrations:", err)
+	}
+
+	log.Printf("Database connected and migrated successfully: %s", dbPath)
+
+	// Initialize repositories
+	gameRepo := database.NewGameRepository(db)
+	gameMoveRepo := database.NewGameMoveRepository(db)
+	// aiRepo := database.NewAIRepository(db)           // Phase 2
+	// aiRankingRepo := database.NewAIRankingRepository(db) // Phase 2
+
 	// Initialize services
-	// gameService := service.NewGameService() // TODO: Enable when infrastructure layer is implemented
+	gameService := service.NewGameService()
+	aiService := service.NewAIService()
 
 	// Initialize usecases
-	// Note: Repository implementations will be added in infrastructure layer
-	var gameUsecase *usecase.GameUsecase
-	// gameUsecase = usecase.NewGameUsecase(gameRepo, gameMoveRepo, gameService)
+	gameUsecase := usecase.NewGameUsecase(gameRepo, gameMoveRepo, gameService, aiService)
 
 	// Initialize handlers
 	gameHandler := handler.NewGameHandler(gameUsecase)
 
 	// Setup Gin router
+	gin.SetMode(gin.ReleaseMode) // Set production mode
+	if os.Getenv("GIN_MODE") == "debug" {
+		gin.SetMode(gin.DebugMode)
+	}
+
 	r := gin.Default()
 
 	// Add CORS middleware
@@ -40,9 +72,11 @@ func main() {
 	// Health check endpoint
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
-			"status":  "ok",
-			"service": "vsmaze-backend",
-			"version": "v0.1.0",
+			"status":    "ok",
+			"service":   "vsmaze-backend",
+			"version":   "v0.1.0",
+			"database":  "connected",
+			"timestamp": "2024-12-18T10:00:00Z",
 		})
 	})
 
@@ -62,18 +96,28 @@ func main() {
 		games.DELETE("/:id", gameHandler.DeleteGame)          // DELETE /api/v1/games/:id
 	}
 
+	// AI routes (placeholder for Phase 2)
+	ais := api.Group("/ais")
+	{
+		ais.GET("", func(c *gin.Context) {
+			c.JSON(200, gin.H{"message": "AI management endpoints - Phase 2"})
+		})
+	}
+
 	// WebSocket endpoint (placeholder)
 	r.GET("/ws", func(c *gin.Context) {
 		c.JSON(200, gin.H{
-			"message": "WebSocket endpoint - to be implemented",
+			"message": "WebSocket endpoint - to be implemented in Phase 1",
 		})
 	})
 
 	// Start server
 	port := ":8080"
-	log.Printf("Starting VSmaze Backend Server on port %s", port)
-	log.Printf("Health check: http://localhost%s/health", port)
-	log.Printf("API base URL: http://localhost%s/api/v1", port)
+	log.Printf("🚀 VSmaze Backend Server starting...")
+	log.Printf("📊 Health check: http://localhost%s/health", port)
+	log.Printf("🎮 API base URL: http://localhost%s/api/v1", port)
+	log.Printf("💾 Database: %s", dbPath)
+	log.Printf("🔧 Environment: %s", gin.Mode())
 
 	if err := r.Run(port); err != nil {
 		log.Fatal("Failed to start server:", err)
